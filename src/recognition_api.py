@@ -209,10 +209,10 @@ class Progress:
 
                 word_result = {}
                 word_result.update({"location": {
-                    "width": int(right_down[0] - left_up[0]),
-                    "top": int(left_up[1]),
-                    "left": int(left_up[0]),
-                    "height": int(right_down[1] - left_up[1])
+                    "width": int(right_up[0] - left_down[0]),
+                    "top": int(left_down[1]),
+                    "left": int(left_down[0]),
+                    "height": int(right_up[1] - left_down[1])
                 }})
                 word_result.update({"words":ocr_text})
                 words_result["words_result"].append(word_result)
@@ -253,7 +253,7 @@ def form_recognition(image, type=0):
         progress.main(image)
         return progress.get_json()
 
-def form_recognition(image_path, type=0):
+def form_recognition_by_path(image_path, type=0):
     image = cv2.imread(image_path)
     if type == 0:  # 申请表
         progress.main(image)
