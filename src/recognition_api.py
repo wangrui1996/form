@@ -253,5 +253,12 @@ def form_recognition(image, type=0):
         progress.main(image)
         return progress.get_json()
 
+def form_recognition(image_path, type=0):
+    image = cv2.imread(image_path)
+    if type == 0:  # 申请表
+        progress.main(image)
+        return progress.get_json()
+
+
 def get_show_image():
     return progress.show_image
