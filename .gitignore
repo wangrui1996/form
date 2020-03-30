@@ -1,0 +1,10 @@
+*.jpg
+*.jpeg
+*.png
+test_code/*
+test_result/*
+main.py
+*.pyc
+.DS_Store
+
+tf.tflite
