@@ -25,11 +25,11 @@ class Progress:
         #cv2.imwrite("img_birary.jpg", img_binary)
         self.image = image
         if self.debug:
-            #cv2.imshow("img_binary", img_binary)
-            #cv2.imshow("rgb", image)
+            cv2.imshow("img_binary", img_binary)
+            cv2.imshow("rgb", image)
             self.show_image = image.copy()
-        #cv2.imshow("demo", img_binary)
-        #cv2.waitKey(0)
+        cv2.imshow("demo", img_binary)
+        cv2.waitKey(0)
         self.img_binary = img_binary
 
         self.cut_image()
@@ -39,6 +39,42 @@ class Progress:
             pass
             #cv2.imshow("demo", self.show_image)
             #cv2.waitKey(0)
+
+    def progress_praragraph(self, image):
+        img_blurred = gray_and_fliter(image)
+        img_binary = gradient_and_binary(img_blurred)
+        self.image = image
+        self.show_image = image.copy()
+        self.img_binary = img_binary
+        self.praragraph()
+
+    def praragraph(self, threshold=2):
+        binary_map = (255 - cv2.Canny(self.img_binary, 200, 220)) / 255
+        binary = numpy.ones(binary_map.shape) - binary_map
+        binary_map = numpy.sum(binary, axis=1)
+        stay_upper = False
+        for idx in range(len(binary_map)):
+            if binary_map[idx] > threshold:
+                if stay_upper:
+                    continue
+                else:
+                    stay_upper = True
+                    start = idx
+            else:
+                if stay_upper:
+                    end = idx
+                    stay_upper = False
+                    if end - start < 5:
+                        continue
+                    else:
+                        start = max(0, start - 3)
+                        end = min(end + 3, len(binary_map))
+                        res = predict(self.image[start:end, :])
+                        print(res)
+                else:
+                    continue
+        pass
+
 
     def cut_image(self):
         image_binary = self.img_binary
@@ -120,7 +156,7 @@ class Progress:
                     init = True
                     assert len(countours_res)>=2
                     bottom = max(countours_res[-1][0][1], countours_res[-2][0][1])
-                if rect[1][0] < 18 or rect[1][1] < 18 or rect[0][1]>bottom or min(rect[1][0], rect[1][1])>800:
+                if rect[1][0] < 10 or rect[1][1] < 10 or rect[0][1]>bottom or min(rect[1][0], rect[1][1])>500:
                 #    print(rect)
                     continue
                 box = cv2.boxPoints(rect)
@@ -252,6 +288,9 @@ def form_recognition(image, type=0):
     if type == 0:  # 申请表
         progress.main(image)
         return progress.get_json()
+    elif type == 1:
+        progress.progress_praragraph(image)
+        return {}
 
 def form_recognition_by_path(image_path, type=0):
     image = cv2.imread(image_path)
