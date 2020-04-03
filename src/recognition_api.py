@@ -108,6 +108,9 @@ class Progress:
                             "left": int(self.offset_width),
                             "height": int(start-end)
                         }})
+                        h,w,_= self.show_image.shape
+                        cv2.line(self.show_image, (0, start), (w, start), (0,255,0))
+                        cv2.line(self.show_image, (0, end), (w,end), (0,0,255))
 
                         img_pil = Image.fromarray(self.show_image)
                         draw = ImageDraw.Draw(img_pil)
@@ -192,8 +195,93 @@ class Progress:
 
         words_result = {"words_result":[]}
         words_result_num = 0
+        bboxes = []
+        def nms(bbox, box):
+            print(box)
+            b_c = box[0]
+            b_left_down, b_right_down, b_left_up, b_right_up = box[1:]
+            b_width = b_left_down[0] - b_right_down[0]
+            b_height = b_left_up[1] - b_left_down[1]
+            for bx in bbox:
+
+                bb_c = bx[0]
+                bb_left_down, bb_right_down, bb_left_up, bb_right_up = bx[1:]
+                bb_width = bb_left_down[0] - bb_right_down[0]
+                bb_height = bb_left_up[1] - bb_left_down[1]
+                if abs(bb_c[0] - b_c[0])+min(bb_width, b_width)/2 < max(bb_width, b_width)//2 \
+                        and abs(bb_c[1] - b_c[1]) + min(bb_height, b_height)/2 < max(bb_height, b_height)//2:
+                    return bbox
+            bbox.append(box)
+            return bbox
+        def nmsv2(bbox, box):
+            def roi(bbox1_left_down, bbox1_right_up, bbox2_left_down, bbox2_right_up):
+                if bbox1_right_up[0] <= bbox2_left_down[0] or bbox1_left_down[0] >= bbox2_right_up[0] or \
+                    bbox1_left_down[1] > bbox2_right_up[1] or bbox1_right_up[1] < bbox2_left_down[1]:
+                    return 0
+                xmin = max(bbox1_left_down[0], bbox2_left_down[0])
+                ymin = max(bbox1_left_down[1], bbox2_left_down[1])
+                xmax = min(bbox1_right_up[0], bbox1_right_up[0])
+                ymax = min(bbox1_right_up[1], bbox1_right_up[1])
+
+                inter_width = xmax - xmin
+                inter_height = ymax - ymin
+                inter_size = inter_width * inter_height
+                bbox1_size = (bbox1_right_up[0] - bbox1_left_down[0]) * (bbox1_right_up[1] - bbox1_left_down[1])
+                bbox2_size = (bbox2_right_up[0] - bbox2_left_down[0]) * (bbox2_right_up[1] - bbox2_left_down[1])
+
+                return inter_size / min(bbox1_size, bbox2_size)
+
+
+            b_c = box[0]
+            b_left_down, _, _, b_right_up = box[1:]
+            for bx in bbox:
+                #bb_c = bx[0]
+                bb_left_down, _, _, bb_right_up = bx[1:]
+                if roi(bb_left_down, bb_right_up, b_left_down, b_right_up) > 0.99:
+                    return bbox
+            bbox.append(box)
+            return bbox
+
+        def nmsv3(bbox, box):
+            box_contour = numpy.ones((4,1,2), dtype=numpy.int)
+
+            b_c = box[0]
+            b_left_down, b_right_down, b_left_up, b_right_up = box[1:]
+            box_contour[0][0] = [int(b_left_down[0]), int(b_left_down[1])]
+            box_contour[1][0] = [int(b_right_down[0]), int(b_right_down[1])]
+            box_contour[2][0] = [int(b_right_up[0]), int(b_right_up[1])]
+            box_contour[3][0] = [int(b_left_up[0]), int(b_left_up[1])]
+            #print(box_contour.shape)
+            for bx in bbox:
+                bb_c = bx[0][0]
+                bb_left_down, bb_right_down, bb_left_up, bb_right_up = bx[0][1:]
+                #print(bb_left_down.shape)
+                #print(type(bb_left_down))
+                #print(tuple(bb_left_down))
+                #print(bb_left_down)
+                #print(bx[1])
+                if cv2.pointPolygonTest(bx[1], (int(bb_left_down[0]), int(bb_left_down[1])), False) \
+                        and cv2.pointPolygonTest(bx[1], (int(bb_left_up[0]), int(bb_left_up[1])), False) \
+                        and cv2.pointPolygonTest(bx[1], (int(bb_right_down[0]), int(bb_right_down[1])), False) \
+                        and cv2.pointPolygonTest(bx[1], (int(bb_right_up[0]), int(bb_right_up[1])), False):
+                    return bbox
+            bbox.append([box, box_contour])
+            return bbox
+
         for i in range(0, len(contours)):
             area = cv2.contourArea(contours[i])  # 计算面积
+            #print(contours[i])
+            #print(type(contours[i]))
+            #print(contours[i].shape)
+            #print(contours[i].dtype)
+            import numpy
+            #contour = numpy.ones((4, 1, 2), dtype=numpy.int)
+            #contour[0][0] = [0,0]
+            #contour[1][0] = [10, 0]
+            #contour[2][0] = [10,10]
+            #contour[3][0] = [0, 10]
+            #print(cv2.pointPolygonTest(contour, (9,9), False))
+            #exit(0)
             rect = cv2.minAreaRect(contours[i])  # 最小外接矩,返回值有中心点坐标,矩形宽高,倾斜角度三个参数
             if (area <= 1 * image.shape[0] * image.shape[1]) and (area >= 0.05 * image.shape[0] * image.shape[1]) :
                 # 人为设定,身份证正反面框的大小不会超过整张图片大小的0.4,不会小于0.05(这个参数随便设置的)
@@ -201,9 +289,15 @@ class Progress:
             else:
                 if not init:
                     init = True
-                    assert len(countours_res)>=2
+                    assert len(countours_res)>= 3
                     bottom = max(countours_res[-1][0][1], countours_res[-2][0][1])
-                if rect[1][0] < 10 or rect[1][1] < 10 or rect[0][1]>bottom or min(rect[1][0], rect[1][1])>500:
+                    for i in range(3):
+                        _ = countours_res[len(countours_res) - i -1]
+                        box = cv2.boxPoints(_)
+                        left_down, right_down, left_up, right_up = point_judge([int(_[0][0]), int(_[0][1])], box)
+                        bboxes = nmsv3(bboxes, [_[0], left_down, right_down, left_up, right_up])
+                if rect[1][0] < 20 or rect[1][1] < 10 or rect[0][1]>bottom or min(rect[1][0], rect[1][1])>500:
+                #if rect[1][0] < 10 or rect[1][1] < 10 or min(rect[1][0], rect[1][1]) > 500:
                 #    print(rect)
                     continue
                 box = cv2.boxPoints(rect)
@@ -220,6 +314,11 @@ class Progress:
                 result = cv2.warpPerspective(image, m,
                                              (int(max(rect[1][0], rect[1][1])), int(min(rect[1][0], rect[1][1]))),
                                              flags=cv2.INTER_CUBIC)  # 投影变换
+                len_bbox = len(bboxes)
+                bboxes = nmsv3(bboxes, [rect[0], left_down, right_down, left_up, right_up])
+                if len(bboxes) == len_bbox:
+                    continue
+
                 def crop_image(image, threshold=2):
                     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                     binary = (255 - cv2.Canny(gray, 200, 220))/255
