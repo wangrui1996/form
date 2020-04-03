@@ -3,7 +3,7 @@ import numpy
 import cv2
 
 from src.inference_ocrs import predict
-from src.utils import gray_and_fliter, gradient_and_binary
+from src.utils import gray_and_fliter, gradient_and_binary, gradient_and_binary_erode
 from PIL import ImageFont, Image, ImageDraw
 
 fontpath = os.path.join(os.path.dirname(__file__),"simsun.ttf")  # <== 这里是宋体路径
@@ -25,11 +25,11 @@ class Progress:
         #cv2.imwrite("img_birary.jpg", img_binary)
         self.image = image
         if self.debug:
-            cv2.imshow("img_binary", img_binary)
-            cv2.imshow("rgb", image)
+            #cv2.imshow("img_binary", img_binary)
+            #cv2.imshow("rgb", image)
             self.show_image = image.copy()
-        cv2.imshow("demo", img_binary)
-        cv2.waitKey(0)
+        #cv2.imshow("demo", img_binary)
+        #cv2.waitKey(0)
         self.img_binary = img_binary
 
         self.cut_image()
@@ -40,12 +40,41 @@ class Progress:
             #cv2.imshow("demo", self.show_image)
             #cv2.waitKey(0)
 
+    def crop_img_upper(self, img_binary, threshold=50):
+        binary_map = (255 - img_binary) / 255
+        binary = numpy.ones(binary_map.shape) - binary_map
+        binary_map = numpy.sum(binary, axis=0)
+        stay_upper = False
+        start = 0
+        end = len(binary_map)
+        for idx in range(len(binary_map)):
+            if binary_map[idx] > threshold:
+                print(binary_map[idx])
+                start = idx
+                break
+        for idx in range(len(binary_map)-1, -1, -1):
+            if binary_map[idx] > threshold:
+                end = idx
+                print(binary_map[idx])
+                break
+        start = max(0, start- 20)
+        end = min(len(binary_map)-1, end+20)
+        return start, end
     def progress_praragraph(self, image):
         img_blurred = gray_and_fliter(image)
-        img_binary = gradient_and_binary(img_blurred)
-        self.image = image
+        img_binary, img_erode = gradient_and_binary_erode(img_blurred)
+        #cv2.imshow("demo", img_erode)
+        start, end = self.crop_img_upper(img_erode)
+        print(start, end)
+        #cv2.imshow("source", img_binary)
+        #cv2.imshow("rsult", img_binary[:, start:end])
+        self.offset_width = start
+
+
+        self.image = image[:, start:end, :]
         self.show_image = image.copy()
-        self.img_binary = img_binary
+        self.img_binary = img_binary[:, start:end]
+        #cv2.imshow("demo", img_binary)
         self.praragraph()
 
     def praragraph(self, threshold=2):
@@ -53,6 +82,8 @@ class Progress:
         binary = numpy.ones(binary_map.shape) - binary_map
         binary_map = numpy.sum(binary, axis=1)
         stay_upper = False
+        words_result = {"words_result": []}
+        words_result_num = 0
         for idx in range(len(binary_map)):
             if binary_map[idx] > threshold:
                 if stay_upper:
@@ -69,11 +100,27 @@ class Progress:
                     else:
                         start = max(0, start - 3)
                         end = min(end + 3, len(binary_map))
-                        res = predict(self.image[start:end, :])
-                        print(res)
+                        ocr_text = predict(self.image[start:end, :])
+                        word_result = {}
+                        word_result.update({"location": {
+                            "width": int(-1),
+                            "top": int(start),
+                            "left": int(self.offset_width),
+                            "height": int(start-end)
+                        }})
+
+                        img_pil = Image.fromarray(self.show_image)
+                        draw = ImageDraw.Draw(img_pil)
+                        draw.text((int(self.offset_width), int(start)), ocr_text, font=font, fill=(255, 0, 0, 0))
+                        self.show_image = numpy.array(img_pil)
+                        word_result.update({"words": ocr_text})
+                        words_result["words_result"].append(word_result)
+                        words_result_num = words_result_num + 1
                 else:
                     continue
-        pass
+        self.words_result = words_result
+        self.words_result_num = words_result_num
+        #return words_result
 
 
     def cut_image(self):
@@ -290,7 +337,7 @@ def form_recognition(image, type=0):
         return progress.get_json()
     elif type == 1:
         progress.progress_praragraph(image)
-        return {}
+        return progress.get_json()
 
 def form_recognition_by_path(image_path, type=0):
     image = cv2.imread(image_path)
